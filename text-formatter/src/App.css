@@ -376,11 +376,6 @@ button {
   font-weight: 600;
 }
 
-.speed-test-heading > small {
-  color: #777;
-  font-size: 11px;
-}
-
 .image-upload {
   min-height: 86px;
   position: relative;
@@ -559,12 +554,25 @@ button {
 .output-header button {
   min-height: 42px;
   padding: 0 16px;
-  color: #fff;
-  background: #414b22;
-  border: 1px solid #414b22;
+  border: 1px solid;
 }
 
-.primary-button:hover,
+.primary-button {
+  color: var(--forest);
+  background: var(--accent);
+  border-color: #c5dd45;
+}
+
+.primary-button:hover {
+  background: #cfe94a;
+}
+
+.output-header button {
+  color: #fff;
+  background: #414b22;
+  border-color: #414b22;
+}
+
 .output-header button:hover:not(:disabled) {
   background: #323a19;
 }

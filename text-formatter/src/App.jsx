@@ -467,9 +467,9 @@ function App() {
         if (!router.routerId.trim()) currentErrors.routerId = 'Enter a router ID.'
         if (
           router.includeAccessPoint &&
-          !/^\d{4}$/.test(router.accessPointId.trim())
+          !/^[a-z0-9]{4}$/i.test(router.accessPointId.trim())
         ) {
-          currentErrors.accessPointId = 'Enter the last 4 digits.'
+          currentErrors.accessPointId = 'Enter the last 4 letters or numbers.'
         }
 
         if (Object.keys(currentErrors).length) {
@@ -539,6 +539,7 @@ function App() {
 
   async function copyOutput() {
     if (!output) return
+    setCopyStatus('copying')
     const copied = await copyText(output.eventMessage)
 
     setCopyStatus(copied ? 'copied' : 'error')
@@ -807,10 +808,12 @@ function App() {
                       <input
                         value={router.accessPointId}
                         onChange={(event) => updateRouter(router.id, 'accessPointId', event.target.value)}
-                        placeholder="Last 4 digits"
+                        placeholder="Last 4 characters"
                         maxLength="4"
-                        inputMode="numeric"
-                        pattern="[0-9]{4}"
+                        inputMode="text"
+                        pattern="[A-Za-z0-9]{4}"
+                        autoCapitalize="characters"
+                        spellCheck="false"
                         aria-label={`Router ${index + 1} AP Cloud ID`}
                         aria-invalid={Boolean(routerErrors[router.id]?.accessPointId)}
                         aria-describedby={routerErrors[router.id]?.accessPointId ? `ap-error-${router.id}` : undefined}
@@ -827,7 +830,6 @@ function App() {
                 <div className="speed-test-field">
                   <div className="speed-test-heading">
                     <span>Speed-test image</span>
-                    <small>Optional · stays on this device</small>
                   </div>
 
                   {router.speedTestImage ? (
@@ -1045,33 +1047,10 @@ function App() {
           role="region"
           aria-labelledby="generated-results-heading"
         >
-          <section className="output">
-            <div className="output-header">
-              <h2 id="generated-results-heading">Event message</h2>
-              <button type="button" onClick={copyOutput}>
-                {copyStatus === 'copied'
-                  ? 'Copied'
-                  : copyStatus === 'error'
-                    ? 'Copy failed'
-                    : 'Copy message'}
-              </button>
-            </div>
-
-            <pre>{output.eventMessage}</pre>
-
-            <span className="sr-only" role="status" aria-live="polite">
-              {copyStatus === 'copied'
-                ? 'Event message copied to clipboard.'
-                : copyStatus === 'error'
-                  ? 'Copy failed. Select and copy the message manually.'
-                  : ''}
-            </span>
-          </section>
-
           {output.routerResults.length > 0 && (
             <section className="output router-results">
               <div className="output-header router-results-header">
-                <h2>Router results</h2>
+                <h2 id="generated-results-heading">Router results</h2>
                 <span>
                   {output.routerResults.length}{' '}
                   {output.routerResults.length === 1 ? 'router' : 'routers'}
@@ -1116,9 +1095,7 @@ function App() {
                             {resultStatus === 'copying'
                               ? 'Copying…'
                               : resultStatus === 'copied'
-                                ? routerResult.speedTestImage
-                                  ? 'Result copied'
-                                  : 'Caption copied'
+                                ? 'Copy again'
                                 : resultStatus === 'error'
                                   ? 'Try again'
                                   : routerResult.speedTestImage
@@ -1185,6 +1162,44 @@ function App() {
               </div>
             </section>
           )}
+
+          <section className="output">
+            <div className="output-header">
+              <h2
+                id={
+                  output.routerResults.length === 0
+                    ? 'generated-results-heading'
+                    : undefined
+                }
+              >
+                Event message
+              </h2>
+              <button
+                type="button"
+                onClick={copyOutput}
+                disabled={copyStatus === 'copying'}
+                aria-busy={copyStatus === 'copying'}
+              >
+                {copyStatus === 'copying'
+                  ? 'Copying…'
+                  : copyStatus === 'copied'
+                    ? 'Copy again'
+                    : copyStatus === 'error'
+                      ? 'Copy failed'
+                      : 'Copy message'}
+              </button>
+            </div>
+
+            <pre>{output.eventMessage}</pre>
+
+            <span className="sr-only" role="status" aria-live="polite">
+              {copyStatus === 'copied'
+                ? 'Event message copied to clipboard.'
+                : copyStatus === 'error'
+                  ? 'Copy failed. Select and copy the message manually.'
+                  : ''}
+            </span>
+          </section>
         </div>
       )}
     </main>
