@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
+import CroppedImagePreview from './CroppedImagePreview'
+import ImageCropDialog from './ImageCropDialog'
+import { buildEventMessage, buildRouterCaption } from './messageFormatters'
 
 const initialForm = {
   eventName: '',
@@ -17,80 +20,11 @@ const createRouter = (id) => ({
   provider: 'StarHub / Singtel',
   includeAccessPoint: false,
   accessPointId: '',
+  location: '',
   speedTestImage: null,
 })
 
 const createNetwork = (id) => ({ id, ssid: '', password: '' })
-
-function formatCollectionDate(value) {
-  const [year, month, day] = value.split('-').map(Number)
-  const date = new Date(Date.UTC(year, month - 1, day))
-
-  return new Intl.DateTimeFormat('en-SG', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(date)
-}
-
-function formatCollectionTime(value) {
-  const [hour, minute] = value.split(':').map(Number)
-  const time = new Date(Date.UTC(1970, 0, 1, hour, minute))
-
-  return new Intl.DateTimeFormat('en-SG', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'UTC',
-  }).format(time)
-}
-
-function buildRouterCaption(router) {
-  const routerLine = `${router.model} - ${router.routerId.trim()}${router.includeAccessPoint ? ' + AP' : ''}`
-  const mode = router.mode === 'Round Robin' ? 'RR' : router.mode
-  const lines = [routerLine, `${router.provider} ${mode}`]
-
-  if (router.includeAccessPoint) {
-    lines.push(`AP Cloud ID: ${router.accessPointId.trim()}`)
-  }
-
-  return lines.join('\n')
-}
-
-function buildEventMessage(form, networks) {
-  const isCollectionDone = form.statusUpdate === 'Collection done'
-  const updateType = isCollectionDone ? 'Collection' : 'Setup'
-  const lines = [`${updateType} completed for Event @ ${form.eventName.trim()}`]
-
-  if (!isCollectionDone && (form.collectionDate || form.collectionTime)) {
-    const collectionDateTime = [
-      form.collectionDate && formatCollectionDate(form.collectionDate),
-      form.collectionTime && formatCollectionTime(form.collectionTime),
-    ].filter(Boolean)
-
-    lines.push('', `Collection: ${collectionDateTime.join(', ')}`)
-  }
-
-  if (!isCollectionDone) {
-    const completedNetworks = networks.filter(
-      (network) => network.ssid.trim() && network.password.trim(),
-    )
-
-    completedNetworks.forEach((network, index) => {
-      const suffix = completedNetworks.length > 1 ? ` ${index + 1}` : ''
-      lines.push(
-        '',
-        `SSID${suffix}: ${network.ssid.trim()}`,
-        `Password${suffix}: ${network.password.trim()}`,
-      )
-    })
-  }
-
-  if (form.notes.trim()) lines.push('', `Notes: ${form.notes.trim()}`)
-
-  return lines.join('\n')
-}
 
 function copyWithFallback(text) {
   const textArea = document.createElement('textarea')
@@ -162,7 +96,24 @@ function wrapCanvasText(context, text, maxWidth) {
   return wrappedLines
 }
 
-function createCombinedResultImage(file, caption) {
+function normalizeCrop(crop) {
+  const width = Number.isFinite(crop?.width)
+    ? Math.min(1, Math.max(0.03, crop.width))
+    : 1
+  const height = Number.isFinite(crop?.height)
+    ? Math.min(1, Math.max(0.03, crop.height))
+    : 1
+  const x = Number.isFinite(crop?.x)
+    ? Math.min(1 - width, Math.max(0, crop.x))
+    : 0
+  const y = Number.isFinite(crop?.y)
+    ? Math.min(1 - height, Math.max(0, crop.y))
+    : 0
+
+  return { x, y, width, height }
+}
+
+function createCombinedResultImage(file, caption, crop) {
   return new Promise((resolve, reject) => {
     const imageUrl = URL.createObjectURL(file)
     const image = new Image()
@@ -182,14 +133,37 @@ function createCombinedResultImage(file, caption) {
           return
         }
 
+        const normalizedCrop = normalizeCrop(crop)
+        const sourceX = Math.min(
+          naturalWidth - 1,
+          Math.max(0, Math.round(normalizedCrop.x * naturalWidth)),
+        )
+        const sourceY = Math.min(
+          naturalHeight - 1,
+          Math.max(0, Math.round(normalizedCrop.y * naturalHeight)),
+        )
+        const sourceWidth = Math.max(
+          1,
+          Math.min(
+            naturalWidth - sourceX,
+            Math.round(normalizedCrop.width * naturalWidth),
+          ),
+        )
+        const sourceHeight = Math.max(
+          1,
+          Math.min(
+            naturalHeight - sourceY,
+            Math.round(normalizedCrop.height * naturalHeight),
+          ),
+        )
         const scale = Math.min(
           1,
-          2048 / naturalWidth,
-          4096 / naturalHeight,
-          Math.sqrt(12_000_000 / (naturalWidth * naturalHeight)),
+          2048 / sourceWidth,
+          4096 / sourceHeight,
+          Math.sqrt(12_000_000 / (sourceWidth * sourceHeight)),
         )
-        const imageWidth = Math.max(1, Math.round(naturalWidth * scale))
-        const imageHeight = Math.max(1, Math.round(naturalHeight * scale))
+        const imageWidth = Math.max(1, Math.round(sourceWidth * scale))
+        const imageHeight = Math.max(1, Math.round(sourceHeight * scale))
         const padding = Math.max(12, Math.min(64, Math.round(imageWidth * 0.025)))
         const fontSize = Math.max(14, Math.min(56, Math.round(imageWidth * 0.03)))
         const lineHeight = Math.round(fontSize * 1.45)
@@ -224,7 +198,17 @@ function createCombinedResultImage(file, caption) {
         context.fillRect(0, 0, canvas.width, canvas.height)
         context.imageSmoothingEnabled = true
         context.imageSmoothingQuality = 'high'
-        context.drawImage(image, 0, 0, imageWidth, imageHeight)
+        context.drawImage(
+          image,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          0,
+          0,
+          imageWidth,
+          imageHeight,
+        )
         context.fillStyle = '#f7f7f5'
         context.fillRect(0, imageHeight, imageWidth, captionHeight)
         context.fillStyle = '#dedfd9'
@@ -273,11 +257,13 @@ function App() {
   const [routerErrors, setRouterErrors] = useState({})
   const [networkErrors, setNetworkErrors] = useState({})
   const [output, setOutput] = useState(null)
+  const [cropEditorRouterId, setCropEditorRouterId] = useState(null)
   const [copyStatus, setCopyStatus] = useState('idle')
   const [routerResultCopyStatus, setRouterResultCopyStatus] = useState({})
   const nextRouterId = useRef(2)
   const nextNetworkId = useRef(2)
   const outputRef = useRef(null)
+  const cropTriggerRef = useRef(null)
   const imageUrlsRef = useRef(new Set())
 
   useEffect(() => {
@@ -311,6 +297,7 @@ function App() {
     if (name === 'statusUpdate' && value === 'Collection done') {
       setRouterErrors({})
       setNetworkErrors({})
+      setCropEditorRouterId(null)
     }
     clearOutput()
   }
@@ -369,6 +356,7 @@ function App() {
                 file,
                 name: file.name,
                 previewUrl,
+                crop: { x: 0, y: 0, width: 1, height: 1 },
               },
             }
           : router,
@@ -400,6 +388,37 @@ function App() {
       ...current,
       [id]: { ...current[id], speedTestImage: '' },
     }))
+    if (cropEditorRouterId === id) setCropEditorRouterId(null)
+    clearOutput()
+  }
+
+  function openRouterImageCrop(id, trigger) {
+    cropTriggerRef.current = trigger
+    setCropEditorRouterId(id)
+  }
+
+  function closeRouterImageCrop() {
+    setCropEditorRouterId(null)
+    window.setTimeout(() => {
+      if (cropTriggerRef.current?.isConnected) cropTriggerRef.current.focus()
+      cropTriggerRef.current = null
+    }, 0)
+  }
+
+  function saveRouterImageCrop(id, crop) {
+    setRouters((current) =>
+      current.map((router) =>
+        router.id === id
+          ? {
+              ...router,
+              speedTestImage: router.speedTestImage
+                ? { ...router.speedTestImage, crop: normalizeCrop(crop) }
+                : null,
+            }
+          : router,
+      ),
+    )
+    closeRouterImageCrop()
     clearOutput()
   }
 
@@ -419,6 +438,7 @@ function App() {
       delete next[id]
       return next
     })
+    if (cropEditorRouterId === id) setCropEditorRouterId(null)
     clearOutput()
   }
 
@@ -505,7 +525,7 @@ function App() {
     }
 
     setOutput({
-      eventMessage: buildEventMessage(form, networks),
+      eventMessage: buildEventMessage(form, routers, networks),
       routerResults: isCollectionDone
         ? []
         : routers.map((router, index) => ({
@@ -573,6 +593,7 @@ function App() {
       const pngBlob = createCombinedResultImage(
         routerResult.speedTestImage.file,
         routerResult.caption,
+        routerResult.speedTestImage.crop,
       )
       const clipboardItem = new window.ClipboardItem({
         'image/png': pngBlob,
@@ -598,6 +619,7 @@ function App() {
       const blob = await createCombinedResultImage(
         routerResult.speedTestImage.file,
         routerResult.caption,
+        routerResult.speedTestImage.crop,
       )
       const downloadUrl = URL.createObjectURL(blob)
       const fileName =
@@ -632,6 +654,7 @@ function App() {
     setRouterErrors({})
     setNetworkErrors({})
     setOutput(null)
+    setCropEditorRouterId(null)
     setCopyStatus('idle')
     setRouterResultCopyStatus({})
   }
@@ -648,6 +671,12 @@ function App() {
     }))
     clearOutput()
   }
+
+  const cropEditorRouterIndex = routers.findIndex(
+    (router) => router.id === cropEditorRouterId,
+  )
+  const cropEditorRouter =
+    cropEditorRouterIndex >= 0 ? routers[cropEditorRouterIndex] : null
 
   return (
     <main className="page">
@@ -790,6 +819,18 @@ function App() {
                       <option>Singtel (WAN)</option>
                     </select>
                   </label>
+
+                  <label className="field router-location-field">
+                    <span>Location</span>
+                    <input
+                      value={router.location}
+                      onChange={(event) =>
+                        updateRouter(router.id, 'location', event.target.value)
+                      }
+                      placeholder="e.g. FOH, beside the stage"
+                      aria-label={`Router ${index + 1} location`}
+                    />
+                  </label>
                 </div>
 
                 <div className="ap-row">
@@ -834,8 +875,8 @@ function App() {
 
                   {router.speedTestImage ? (
                     <div className="selected-image">
-                      <img
-                        src={router.speedTestImage.previewUrl}
+                      <CroppedImagePreview
+                        image={router.speedTestImage}
                         alt={`Selected speed-test for router ${index + 1}`}
                       />
                       <div className="selected-image-details">
@@ -843,6 +884,16 @@ function App() {
                           {router.speedTestImage.name}
                         </strong>
                         <div className="selected-image-actions">
+                          <button
+                            className="image-action"
+                            type="button"
+                            onClick={(event) =>
+                              openRouterImageCrop(router.id, event.currentTarget)
+                            }
+                            aria-label={`Crop or resize speed-test image for router ${index + 1}`}
+                          >
+                            Crop / resize
+                          </button>
                           <label className="image-action">
                             Replace image
                             <input
@@ -1107,8 +1158,8 @@ function App() {
 
                       {routerResult.speedTestImage ? (
                         <div className="result-image-frame">
-                          <img
-                            src={routerResult.speedTestImage.previewUrl}
+                          <CroppedImagePreview
+                            image={routerResult.speedTestImage}
                             alt={`Speed-test for ${routerResult.label}`}
                           />
                         </div>
@@ -1201,6 +1252,15 @@ function App() {
             </span>
           </section>
         </div>
+      )}
+
+      {cropEditorRouter?.speedTestImage && (
+        <ImageCropDialog
+          image={cropEditorRouter.speedTestImage}
+          routerLabel={`Router ${cropEditorRouterIndex + 1}`}
+          onCancel={closeRouterImageCrop}
+          onSave={(crop) => saveRouterImageCrop(cropEditorRouter.id, crop)}
+        />
       )}
     </main>
   )

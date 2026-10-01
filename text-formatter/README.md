@@ -6,8 +6,9 @@ Turning event deployment details into a consistent, copy-ready group chat update
 
 - E3000, AER2200, Peplink, and SOHO router options
 - Round Robin, Spillover, and NA modes
-- One local speed-test image per router with a copyable combined image and caption
-- Optional provider, collection, AP Cloud ID, and notes fields
+- One local speed-test image per router with cropping and a copyable combined image and caption
+- Router details in the event message, including mounting location when provided
+- Optional provider, collection, AP Cloud ID, location, and notes fields
 - Repeatable SSID and password rows
 - Form validation, formatted preview, and one-click copy
 - Responsive layout with no backend or external data storage
