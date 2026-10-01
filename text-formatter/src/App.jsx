@@ -313,17 +313,23 @@ function App() {
               {errors.eventName && <small id="event-error">{errors.eventName}</small>}
             </label>
 
-            <label className="field">
-              <span>Status</span>
-              <select
-                name="statusUpdate"
-                value={form.statusUpdate}
-                onChange={updateField}
-              >
-                <option>Setup done</option>
-                <option>Collection done</option>
-              </select>
-            </label>
+            <fieldset className="status-field">
+              <legend>Status</legend>
+              <div className="status-options">
+                {['Setup done', 'Collection done'].map((status) => (
+                  <label className="status-option" key={status}>
+                    <input
+                      type="radio"
+                      name="statusUpdate"
+                      value={status}
+                      checked={form.statusUpdate === status}
+                      onChange={updateField}
+                    />
+                    <span>{status}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
         </section>
 

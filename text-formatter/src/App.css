@@ -66,6 +66,74 @@
   font-weight: 400;
 }
 
+.status-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.status-field legend {
+  margin-bottom: 5px;
+  padding: 0;
+  color: #444;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-options {
+  height: 42px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #cfd2ca;
+  border-radius: 6px;
+}
+
+.status-option {
+  min-width: 0;
+  cursor: pointer;
+}
+
+.status-option:first-child {
+  border-right: 1px solid #cfd2ca;
+}
+
+.status-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  opacity: 0;
+}
+
+.status-option span {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  color: #555;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.status-option:hover span {
+  background: #f3f5ec;
+}
+
+.status-option input:checked + span {
+  color: #fff;
+  background: #414b22;
+}
+
+.status-option input:focus-visible + span {
+  box-shadow: inset 0 0 0 3px rgba(221, 246, 90, 0.65);
+}
+
 .field input,
 .field select,
 .field textarea {
