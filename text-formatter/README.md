@@ -11,4 +11,4 @@ Turning event deployment details into a consistent, copy-ready group chat update
 - Form validation, formatted preview, and one-click copy
 - Responsive layout with no backend or external data storage
 
-#Built for internal Pomegranets staff.
+# Built for internal Pomegranets staff.
