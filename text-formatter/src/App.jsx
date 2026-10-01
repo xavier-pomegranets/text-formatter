@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 const initialForm = {
@@ -17,6 +17,7 @@ const createRouter = (id) => ({
   provider: 'StarHub / Singtel',
   includeAccessPoint: false,
   accessPointId: '',
+  speedTestImage: null,
 })
 
 const createNetwork = (id) => ({ id, ssid: '', password: '' })
@@ -45,23 +46,22 @@ function formatCollectionTime(value) {
   }).format(time)
 }
 
-function buildMessage(form, routers, networks) {
+function buildRouterCaption(router) {
+  const routerLine = `${router.model} - ${router.routerId.trim()}${router.includeAccessPoint ? ' + AP' : ''}`
+  const mode = router.mode === 'Round Robin' ? 'RR' : router.mode
+  const lines = [routerLine, `${router.provider} ${mode}`]
+
+  if (router.includeAccessPoint) {
+    lines.push(`AP Cloud ID: ${router.accessPointId.trim()}`)
+  }
+
+  return lines.join('\n')
+}
+
+function buildEventMessage(form, networks) {
   const isCollectionDone = form.statusUpdate === 'Collection done'
   const updateType = isCollectionDone ? 'Collection' : 'Setup'
   const lines = [`${updateType} completed for Event @ ${form.eventName.trim()}`]
-
-  if (!isCollectionDone) {
-    routers.forEach((router) => {
-      const routerLine = `${router.model} - ${router.routerId.trim()}${router.includeAccessPoint ? ' + AP' : ''}`
-      const mode = router.mode === 'Round Robin' ? 'RR' : 'Spillover'
-
-      lines.push('', routerLine, `${router.provider} ${mode}`)
-
-      if (router.includeAccessPoint) {
-        lines.push(`AP Cloud ID: ${router.accessPointId.trim()}`)
-      }
-    })
-  }
 
   if (!isCollectionDone && (form.collectionDate || form.collectionTime)) {
     const collectionDateTime = [
@@ -109,6 +109,162 @@ function copyWithFallback(text) {
   }
 }
 
+function wrapCanvasText(context, text, maxWidth) {
+  const wrappedLines = []
+
+  text.split('\n').forEach((paragraph) => {
+    const words = paragraph
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .flatMap((word) => {
+        if (context.measureText(word).width <= maxWidth) return [word]
+
+        const parts = []
+        let part = ''
+
+        Array.from(word).forEach((character) => {
+          const nextPart = `${part}${character}`
+
+          if (part && context.measureText(nextPart).width > maxWidth) {
+            parts.push(part)
+            part = character
+          } else {
+            part = nextPart
+          }
+        })
+
+        if (part) parts.push(part)
+        return parts
+      })
+
+    if (!words.length) {
+      wrappedLines.push('')
+      return
+    }
+
+    let currentLine = words[0]
+
+    words.slice(1).forEach((word) => {
+      const nextLine = `${currentLine} ${word}`
+
+      if (context.measureText(nextLine).width <= maxWidth) {
+        currentLine = nextLine
+      } else {
+        wrappedLines.push(currentLine)
+        currentLine = word
+      }
+    })
+
+    wrappedLines.push(currentLine)
+  })
+
+  return wrappedLines
+}
+
+function createCombinedResultImage(file, caption) {
+  return new Promise((resolve, reject) => {
+    const imageUrl = URL.createObjectURL(file)
+    const image = new Image()
+
+    function cleanup() {
+      URL.revokeObjectURL(imageUrl)
+    }
+
+    image.onload = () => {
+      try {
+        const naturalWidth = image.naturalWidth
+        const naturalHeight = image.naturalHeight
+
+        if (!naturalWidth || !naturalHeight) {
+          cleanup()
+          reject(new Error('The result image could not be prepared.'))
+          return
+        }
+
+        const scale = Math.min(
+          1,
+          2048 / naturalWidth,
+          4096 / naturalHeight,
+          Math.sqrt(12_000_000 / (naturalWidth * naturalHeight)),
+        )
+        const imageWidth = Math.max(1, Math.round(naturalWidth * scale))
+        const imageHeight = Math.max(1, Math.round(naturalHeight * scale))
+        const padding = Math.max(12, Math.min(64, Math.round(imageWidth * 0.025)))
+        const fontSize = Math.max(14, Math.min(56, Math.round(imageWidth * 0.03)))
+        const lineHeight = Math.round(fontSize * 1.45)
+        const measurementCanvas = document.createElement('canvas')
+        const measurementContext = measurementCanvas.getContext('2d')
+
+        if (!measurementContext || !imageWidth || !imageHeight) {
+          cleanup()
+          reject(new Error('The result image could not be prepared.'))
+          return
+        }
+
+        measurementContext.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Consolas, monospace`
+        const captionLines = wrapCanvasText(
+          measurementContext,
+          caption,
+          Math.max(1, imageWidth - padding * 2),
+        )
+        const captionHeight = padding * 2 + captionLines.length * lineHeight
+        const canvas = document.createElement('canvas')
+        canvas.width = imageWidth
+        canvas.height = imageHeight + captionHeight
+        const context = canvas.getContext('2d')
+
+        if (!context || !canvas.width || !canvas.height) {
+          cleanup()
+          reject(new Error('The result image could not be prepared.'))
+          return
+        }
+
+        context.fillStyle = '#ffffff'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        context.imageSmoothingEnabled = true
+        context.imageSmoothingQuality = 'high'
+        context.drawImage(image, 0, 0, imageWidth, imageHeight)
+        context.fillStyle = '#f7f7f5'
+        context.fillRect(0, imageHeight, imageWidth, captionHeight)
+        context.fillStyle = '#dedfd9'
+        context.fillRect(0, imageHeight, imageWidth, Math.max(1, imageWidth / 1000))
+        context.fillStyle = '#20241f'
+        context.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Consolas, monospace`
+        context.textBaseline = 'top'
+
+        captionLines.forEach((line, index) => {
+          context.fillText(
+            line,
+            padding,
+            imageHeight + padding + index * lineHeight,
+          )
+        })
+
+        canvas.toBlob((blob) => {
+          cleanup()
+
+          if (blob) {
+            resolve(blob)
+          } else {
+            reject(new Error('The result image could not be prepared.'))
+          }
+        }, 'image/png')
+      } catch (error) {
+        cleanup()
+        reject(error)
+      }
+    }
+
+    image.onerror = () => {
+      cleanup()
+      reject(new Error('The speed-test image could not be loaded.'))
+    }
+
+    image.src = imageUrl
+  })
+}
+
 function App() {
   const [form, setForm] = useState(initialForm)
   const [routers, setRouters] = useState([createRouter(1)])
@@ -116,15 +272,33 @@ function App() {
   const [errors, setErrors] = useState({})
   const [routerErrors, setRouterErrors] = useState({})
   const [networkErrors, setNetworkErrors] = useState({})
-  const [output, setOutput] = useState('')
+  const [output, setOutput] = useState(null)
   const [copyStatus, setCopyStatus] = useState('idle')
+  const [routerResultCopyStatus, setRouterResultCopyStatus] = useState({})
   const nextRouterId = useRef(2)
   const nextNetworkId = useRef(2)
   const outputRef = useRef(null)
+  const imageUrlsRef = useRef(new Set())
+
+  useEffect(() => {
+    const imageUrls = imageUrlsRef.current
+
+    return () => {
+      imageUrls.forEach((url) => URL.revokeObjectURL(url))
+      imageUrls.clear()
+    }
+  }, [])
 
   function clearOutput() {
-    setOutput('')
+    setOutput(null)
     setCopyStatus('idle')
+    setRouterResultCopyStatus({})
+  }
+
+  function releaseImage(image) {
+    if (!image?.previewUrl) return
+    URL.revokeObjectURL(image.previewUrl)
+    imageUrlsRef.current.delete(image.previewUrl)
   }
 
   function updateField(event) {
@@ -144,7 +318,17 @@ function App() {
   function updateRouter(id, field, value) {
     setRouters((current) =>
       current.map((router) =>
-        router.id === id ? { ...router, [field]: value } : router,
+        router.id === id
+          ? {
+              ...router,
+              [field]: value,
+              ...(field === 'model' && value === 'SOHO'
+                ? { mode: 'NA' }
+                : field === 'model' && router.model === 'SOHO'
+                  ? { mode: 'Round Robin' }
+                  : {}),
+            }
+          : router,
       ),
     )
     setRouterErrors((current) => ({
@@ -158,6 +342,67 @@ function App() {
     clearOutput()
   }
 
+  function updateRouterImage(id, file) {
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setRouterErrors((current) => ({
+        ...current,
+        [id]: {
+          ...current[id],
+          speedTestImage: 'Choose an image file.',
+        },
+      }))
+      return
+    }
+
+    const currentImage = routers.find((router) => router.id === id)?.speedTestImage
+    const previewUrl = URL.createObjectURL(file)
+    imageUrlsRef.current.add(previewUrl)
+
+    setRouters((current) =>
+      current.map((router) =>
+        router.id === id
+          ? {
+              ...router,
+              speedTestImage: {
+                file,
+                name: file.name,
+                previewUrl,
+              },
+            }
+          : router,
+      ),
+    )
+    setRouterErrors((current) => ({
+      ...current,
+      [id]: { ...current[id], speedTestImage: '' },
+    }))
+    releaseImage(currentImage)
+    clearOutput()
+  }
+
+  function handleRouterImageChange(id, event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    updateRouterImage(id, file)
+  }
+
+  function removeRouterImage(id) {
+    const currentImage = routers.find((router) => router.id === id)?.speedTestImage
+    releaseImage(currentImage)
+    setRouters((current) =>
+      current.map((router) =>
+        router.id === id ? { ...router, speedTestImage: null } : router,
+      ),
+    )
+    setRouterErrors((current) => ({
+      ...current,
+      [id]: { ...current[id], speedTestImage: '' },
+    }))
+    clearOutput()
+  }
+
   function addRouter() {
     const id = nextRouterId.current
     nextRouterId.current += 1
@@ -166,6 +411,8 @@ function App() {
   }
 
   function removeRouter(id) {
+    const routerToRemove = routers.find((router) => router.id === id)
+    releaseImage(routerToRemove?.speedTestImage)
     setRouters((current) => current.filter((router) => router.id !== id))
     setRouterErrors((current) => {
       const next = { ...current }
@@ -257,9 +504,21 @@ function App() {
       return
     }
 
-    setOutput(buildMessage(form, routers, networks))
+    setOutput({
+      eventMessage: buildEventMessage(form, networks),
+      routerResults: isCollectionDone
+        ? []
+        : routers.map((router, index) => ({
+            id: router.id,
+            label: `Router ${index + 1}`,
+            caption: buildRouterCaption(router),
+            speedTestImage: router.speedTestImage,
+          })),
+    })
     setCopyStatus('idle')
+    setRouterResultCopyStatus({})
     window.setTimeout(() => {
+      outputRef.current?.focus({ preventScroll: true })
       outputRef.current?.scrollIntoView({
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
           ? 'auto'
@@ -269,21 +528,100 @@ function App() {
     }, 0)
   }
 
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      return copyWithFallback(text)
+    }
+  }
+
   async function copyOutput() {
     if (!output) return
-    let copied
-
-    try {
-      await navigator.clipboard.writeText(output)
-      copied = true
-    } catch {
-      copied = copyWithFallback(output)
-    }
+    const copied = await copyText(output.eventMessage)
 
     setCopyStatus(copied ? 'copied' : 'error')
   }
 
+  async function copyRouterResult(routerResult) {
+    setRouterResultCopyStatus((current) => ({
+      ...current,
+      [routerResult.id]: 'copying',
+    }))
+
+    if (!routerResult.speedTestImage) {
+      const copied = await copyText(routerResult.caption)
+
+      setRouterResultCopyStatus((current) => ({
+        ...current,
+        [routerResult.id]: copied ? 'copied' : 'error',
+      }))
+      return
+    }
+
+    try {
+      if (
+        !window.isSecureContext ||
+        !navigator.clipboard?.write ||
+        !window.ClipboardItem
+      ) {
+        throw new Error('Image clipboard is not supported by this browser.')
+      }
+
+      const pngBlob = createCombinedResultImage(
+        routerResult.speedTestImage.file,
+        routerResult.caption,
+      )
+      const clipboardItem = new window.ClipboardItem({
+        'image/png': pngBlob,
+      })
+
+      await navigator.clipboard.write([clipboardItem])
+      setRouterResultCopyStatus((current) => ({
+        ...current,
+        [routerResult.id]: 'copied',
+      }))
+    } catch {
+      setRouterResultCopyStatus((current) => ({
+        ...current,
+        [routerResult.id]: 'error',
+      }))
+    }
+  }
+
+  async function downloadRouterResult(routerResult) {
+    if (!routerResult.speedTestImage) return
+
+    try {
+      const blob = await createCombinedResultImage(
+        routerResult.speedTestImage.file,
+        routerResult.caption,
+      )
+      const downloadUrl = URL.createObjectURL(blob)
+      const fileName =
+        routerResult.caption
+          .split('\n')[0]
+          .replace(/[^a-z0-9]+/gi, '-')
+          .replace(/^-|-$/g, '') || 'router-result'
+      const link = document.createElement('a')
+
+      link.href = downloadUrl
+      link.download = `${fileName}.png`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000)
+    } catch {
+      setRouterResultCopyStatus((current) => ({
+        ...current,
+        [routerResult.id]: 'error',
+      }))
+    }
+  }
+
   function resetForm() {
+    routers.forEach((router) => releaseImage(router.speedTestImage))
     setForm(initialForm)
     setRouters([createRouter(1)])
     setNetworks([createNetwork(1)])
@@ -292,8 +630,9 @@ function App() {
     setErrors({})
     setRouterErrors({})
     setNetworkErrors({})
-    setOutput('')
+    setOutput(null)
     setCopyStatus('idle')
+    setRouterResultCopyStatus({})
   }
 
   function addNoIssuesNote() {
@@ -360,9 +699,9 @@ function App() {
           <div className="router-list">
             {routers.map((router, index) => (
               <div className="router-block" key={router.id}>
-                {routers.length > 1 && (
-                  <div className="router-block-header">
-                    <strong>Router {index + 1}</strong>
+                <div className="router-block-header">
+                  <strong>Router {index + 1}</strong>
+                  {routers.length > 1 && (
                     <button
                       className="inline-remove"
                       type="button"
@@ -371,8 +710,8 @@ function App() {
                     >
                       Remove
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 <div className="field-grid two-columns">
                   <label className="field">
@@ -385,6 +724,7 @@ function App() {
                       <option>E3000</option>
                       <option>AER2200</option>
                       <option>Peplink</option>
+                      <option>SOHO</option>
                     </select>
                   </label>
 
@@ -416,10 +756,22 @@ function App() {
                       value={router.mode}
                       onChange={(event) => updateRouter(router.id, 'mode', event.target.value)}
                       aria-label={`Router ${index + 1} mode`}
+                      aria-describedby={
+                        router.model === 'SOHO'
+                          ? `mode-note-${router.id}`
+                          : undefined
+                      }
+                      disabled={router.model === 'SOHO'}
                     >
                       <option>Round Robin</option>
                       <option>Spillover</option>
+                      <option>NA</option>
                     </select>
+                    {router.model === 'SOHO' && (
+                      <small className="field-note" id={`mode-note-${router.id}`}>
+                        SOHO mode is fixed to NA.
+                      </small>
+                    )}
                   </label>
 
                   <label className="field">
@@ -433,6 +785,8 @@ function App() {
                       <option>Singtel / StarHub</option>
                       <option>Singtel only</option>
                       <option>StarHub only</option>
+                      <option>StarHub (WAN)</option>
+                      <option>Singtel (WAN)</option>
                     </select>
                   </label>
                 </div>
@@ -467,6 +821,89 @@ function App() {
                         </small>
                       )}
                     </label>
+                  )}
+                </div>
+
+                <div className="speed-test-field">
+                  <div className="speed-test-heading">
+                    <span>Speed-test image</span>
+                    <small>Optional · stays on this device</small>
+                  </div>
+
+                  {router.speedTestImage ? (
+                    <div className="selected-image">
+                      <img
+                        src={router.speedTestImage.previewUrl}
+                        alt={`Selected speed-test for router ${index + 1}`}
+                      />
+                      <div className="selected-image-details">
+                        <strong title={router.speedTestImage.name}>
+                          {router.speedTestImage.name}
+                        </strong>
+                        <div className="selected-image-actions">
+                          <label className="image-action">
+                            Replace image
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(event) =>
+                                handleRouterImageChange(router.id, event)
+                              }
+                              aria-label={`Replace speed-test image for router ${index + 1}`}
+                              aria-invalid={Boolean(
+                                routerErrors[router.id]?.speedTestImage,
+                              )}
+                              aria-describedby={
+                                routerErrors[router.id]?.speedTestImage
+                                  ? `speed-test-error-${router.id}`
+                                  : undefined
+                              }
+                            />
+                          </label>
+                          <button
+                            className="image-action image-remove"
+                            type="button"
+                            onClick={() => removeRouterImage(router.id)}
+                            aria-label={`Remove speed-test image from router ${index + 1}`}
+                          >
+                            Remove image
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="image-upload">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) =>
+                          handleRouterImageChange(router.id, event)
+                        }
+                        aria-label={`Choose speed-test image for router ${index + 1}`}
+                        aria-invalid={Boolean(
+                          routerErrors[router.id]?.speedTestImage,
+                        )}
+                        aria-describedby={
+                          routerErrors[router.id]?.speedTestImage
+                            ? `speed-test-error-${router.id}`
+                            : `speed-test-help-${router.id}`
+                        }
+                      />
+                      <span>Choose image</span>
+                      <small id={`speed-test-help-${router.id}`}>
+                        PNG, JPG, WebP, or another image format
+                      </small>
+                    </label>
+                  )}
+
+                  {routerErrors[router.id]?.speedTestImage && (
+                    <small
+                      className="image-error"
+                      id={`speed-test-error-${router.id}`}
+                      role="alert"
+                    >
+                      {routerErrors[router.id].speedTestImage}
+                    </small>
                   )}
                 </div>
               </div>
@@ -601,28 +1038,154 @@ function App() {
       </form>
 
       {output && (
-        <section className="output" ref={outputRef}>
-          <div className="output-header">
-            <h2>Message</h2>
-            <button type="button" onClick={copyOutput}>
+        <div
+          className="generated-results"
+          ref={outputRef}
+          tabIndex={-1}
+          role="region"
+          aria-labelledby="generated-results-heading"
+        >
+          <section className="output">
+            <div className="output-header">
+              <h2 id="generated-results-heading">Event message</h2>
+              <button type="button" onClick={copyOutput}>
+                {copyStatus === 'copied'
+                  ? 'Copied'
+                  : copyStatus === 'error'
+                    ? 'Copy failed'
+                    : 'Copy message'}
+              </button>
+            </div>
+
+            <pre>{output.eventMessage}</pre>
+
+            <span className="sr-only" role="status" aria-live="polite">
               {copyStatus === 'copied'
-                ? 'Copied'
+                ? 'Event message copied to clipboard.'
                 : copyStatus === 'error'
-                  ? 'Copy failed'
-                  : 'Copy'}
-            </button>
-          </div>
+                  ? 'Copy failed. Select and copy the message manually.'
+                  : ''}
+            </span>
+          </section>
 
-          <pre>{output}</pre>
+          {output.routerResults.length > 0 && (
+            <section className="output router-results">
+              <div className="output-header router-results-header">
+                <h2>Router results</h2>
+                <span>
+                  {output.routerResults.length}{' '}
+                  {output.routerResults.length === 1 ? 'router' : 'routers'}
+                </span>
+              </div>
+              <p className="output-help">
+                Copy each result and paste it once into WhatsApp. The caption is
+                included in the image.
+              </p>
 
-          <span className="sr-only" role="status" aria-live="polite">
-            {copyStatus === 'copied'
-              ? 'Message copied to clipboard.'
-              : copyStatus === 'error'
-                ? 'Copy failed. Select and copy the message manually.'
-                : ''}
-          </span>
-        </section>
+              <div className="router-result-list">
+                {output.routerResults.map((routerResult) => {
+                  const resultStatus =
+                    routerResultCopyStatus[routerResult.id] || 'idle'
+                  const headingId = `router-result-${routerResult.id}`
+                  const copyErrorId = `router-result-copy-error-${routerResult.id}`
+
+                  return (
+                    <article
+                      className="router-result"
+                      key={routerResult.id}
+                      aria-labelledby={headingId}
+                    >
+                      <div className="router-result-header">
+                        <h3 id={headingId}>{routerResult.label} result</h3>
+                        <div className="result-copy-actions">
+                          <button
+                            className="result-copy-button"
+                            type="button"
+                            onClick={() => copyRouterResult(routerResult)}
+                            disabled={resultStatus === 'copying'}
+                            aria-busy={resultStatus === 'copying'}
+                            aria-describedby={
+                              resultStatus === 'error' ? copyErrorId : undefined
+                            }
+                            aria-label={
+                              routerResult.speedTestImage
+                                ? `Copy ${routerResult.label} photo and caption as one image`
+                                : `Copy caption for ${routerResult.label}`
+                            }
+                          >
+                            {resultStatus === 'copying'
+                              ? 'Copying…'
+                              : resultStatus === 'copied'
+                                ? routerResult.speedTestImage
+                                  ? 'Result copied'
+                                  : 'Caption copied'
+                                : resultStatus === 'error'
+                                  ? 'Try again'
+                                  : routerResult.speedTestImage
+                                    ? 'Copy result'
+                                    : 'Copy caption'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {routerResult.speedTestImage ? (
+                        <div className="result-image-frame">
+                          <img
+                            src={routerResult.speedTestImage.previewUrl}
+                            alt={`Speed-test for ${routerResult.label}`}
+                          />
+                        </div>
+                      ) : (
+                        <div className="missing-result-image">
+                          No speed-test image attached
+                        </div>
+                      )}
+
+                      {resultStatus === 'error' && (
+                        <p className="result-copy-error" id={copyErrorId}>
+                          {routerResult.speedTestImage ? (
+                            <>
+                              Couldn&apos;t copy this result.{' '}
+                              <button
+                                className="download-result-button"
+                                type="button"
+                                onClick={() => downloadRouterResult(routerResult)}
+                              >
+                                Download the combined image
+                              </button>{' '}
+                              and attach it in WhatsApp.
+                            </>
+                          ) : (
+                            'Couldn\'t copy this caption. Select the text below and copy it manually.'
+                          )}
+                        </p>
+                      )}
+
+                      {!routerResult.speedTestImage && (
+                        <p className="missing-image-help">
+                          Add a speed-test image and generate again to create a
+                          combined result.
+                        </p>
+                      )}
+
+                      <pre>{routerResult.caption}</pre>
+
+                      <span className="sr-only" role="status" aria-live="polite">
+                        {resultStatus === 'copied'
+                          ? routerResult.speedTestImage
+                            ? `${routerResult.label} result copied as an image. Paste it into WhatsApp.`
+                            : `${routerResult.label} caption copied to clipboard.`
+                          : resultStatus === 'error'
+                            ? `${routerResult.label} result could not be copied.`
+                            : ''}
+                      </span>
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+        </div>
       )}
     </main>
   )
