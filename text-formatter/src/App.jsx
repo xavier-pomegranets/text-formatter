@@ -765,7 +765,7 @@ function App() {
                       <input
                         value={router.routerId}
                         onChange={(event) => updateRouter(router.id, 'routerId', event.target.value)}
-                        placeholder="5"
+                        placeholder="e.g. 5"
                         inputMode="numeric"
                         pattern="[0-9]*"
                         aria-label={`Router ${index + 1} ID`}
