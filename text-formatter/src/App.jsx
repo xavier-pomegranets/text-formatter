@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import CroppedImagePreview from './CroppedImagePreview'
 import ImageCropDialog from './ImageCropDialog'
+import {
+  getClipboardImageFile,
+  getPastedImageName,
+} from './imageClipboard'
 import { buildEventMessage, buildRouterCaption } from './messageFormatters'
 
 const initialForm = {
@@ -25,6 +29,44 @@ const createRouter = (id) => ({
 })
 
 const createNetwork = (id) => ({ id, ssid: '', password: '' })
+
+function getRouterSettingsSummary(router) {
+  const parts = [router.provider, router.mode]
+
+  if (router.location.trim()) parts.push(router.location.trim())
+  if (router.includeAccessPoint) {
+    parts.push(
+      router.accessPointId.trim()
+        ? `AP ${router.accessPointId.trim()}`
+        : 'AP included',
+    )
+  }
+
+  return parts.join(' \u00b7 ')
+}
+
+function getEventDetailsSummary(form, networks) {
+  if (form.statusUpdate === 'Collection done') {
+    return form.notes.trim() ? 'Notes added' : 'Notes'
+  }
+
+  const startedNetworks = networks.filter(
+    (network) => network.ssid.trim() || network.password.trim(),
+  ).length
+  const details = []
+
+  if (startedNetworks) {
+    details.push(`${startedNetworks} Wi-Fi${startedNetworks === 1 ? '' : ' networks'}`)
+  }
+  if (form.collectionDate || form.collectionTime) {
+    details.push('Collection set')
+  }
+  if (form.notes.trim()) details.push('Notes added')
+
+  if (details.length) return details.join(' \u00b7 ')
+
+  return 'Wi-Fi, collection and notes'
+}
 
 function copyWithFallback(text) {
   const textArea = document.createElement('textarea')
@@ -258,10 +300,15 @@ function App() {
   const [networkErrors, setNetworkErrors] = useState({})
   const [output, setOutput] = useState(null)
   const [cropEditorRouterId, setCropEditorRouterId] = useState(null)
+  const [imagePasteAnnouncement, setImagePasteAnnouncement] = useState({
+    sequence: 0,
+    message: '',
+  })
   const [copyStatus, setCopyStatus] = useState('idle')
   const [routerResultCopyStatus, setRouterResultCopyStatus] = useState({})
   const nextRouterId = useRef(2)
   const nextNetworkId = useRef(2)
+  const formRef = useRef(null)
   const outputRef = useRef(null)
   const cropTriggerRef = useRef(null)
   const imageUrlsRef = useRef(new Set())
@@ -329,7 +376,7 @@ function App() {
     clearOutput()
   }
 
-  function updateRouterImage(id, file) {
+  function updateRouterImage(id, file, displayName = file?.name) {
     if (!file) return
 
     if (!file.type.startsWith('image/')) {
@@ -354,7 +401,7 @@ function App() {
               ...router,
               speedTestImage: {
                 file,
-                name: file.name,
+                name: displayName,
                 previewUrl,
                 crop: { x: 0, y: 0, width: 1, height: 1 },
               },
@@ -374,6 +421,29 @@ function App() {
     const file = event.target.files?.[0]
     event.target.value = ''
     updateRouterImage(id, file)
+  }
+
+  function handleRouterImagePaste(id, event) {
+    const clipboardFile = getClipboardImageFile(event.clipboardData)
+
+    if (!clipboardFile) {
+      setRouterErrors((current) => ({
+        ...current,
+        [id]: {
+          ...current[id],
+          speedTestImage:
+            'The clipboard does not contain an image. Copy a screenshot and paste again, or choose a file.',
+        },
+      }))
+      return
+    }
+
+    event.preventDefault()
+    updateRouterImage(id, clipboardFile, getPastedImageName(clipboardFile))
+    setImagePasteAnnouncement((current) => ({
+      sequence: current.sequence + 1,
+      message: 'Screenshot pasted into the speed-test field.',
+    }))
   }
 
   function removeRouterImage(id) {
@@ -519,7 +589,16 @@ function App() {
       Object.keys(nextNetworkErrors).length
     ) {
       window.setTimeout(() => {
-        document.querySelector('[aria-invalid="true"]')?.focus()
+        const invalidFields = Array.from(
+          document.querySelectorAll('[aria-invalid="true"]'),
+        )
+
+        invalidFields.forEach((invalidField) => {
+          const containingDetails = invalidField.closest('details')
+
+          if (containingDetails) containingDetails.open = true
+        })
+        invalidFields[0]?.focus()
       }, 0)
       return
     }
@@ -655,8 +734,12 @@ function App() {
     setNetworkErrors({})
     setOutput(null)
     setCropEditorRouterId(null)
+    setImagePasteAnnouncement({ sequence: 0, message: '' })
     setCopyStatus('idle')
     setRouterResultCopyStatus({})
+    formRef.current?.querySelectorAll('details[open]').forEach((details) => {
+      details.open = false
+    })
   }
 
   function addNoIssuesNote() {
@@ -681,11 +764,21 @@ function App() {
   return (
     <main className="page">
       <header className="page-header">
-        <h1>Event Update</h1>
+        <h1>Event Formatter</h1>
+        <p>Built for Pomegranets internal usage.</p>
       </header>
 
-      <form className="form" onSubmit={formatMessage} noValidate>
+      <form
+        className="form"
+        ref={formRef}
+        onSubmit={formatMessage}
+        noValidate
+      >
         <section className="form-section event-section" aria-label="Event">
+          <div className="section-heading">
+            <span className="section-step" aria-hidden="true">1</span>
+            <h2>Event</h2>
+          </div>
           <div className="field-grid two-columns">
             <label className="field">
               <span>Event *</span>
@@ -724,7 +817,10 @@ function App() {
           className="form-section"
           hidden={form.statusUpdate === 'Collection done'}
         >
-          <h2>Routers</h2>
+          <div className="section-heading">
+            <span className="section-step" aria-hidden="true">2</span>
+            <h2>Routers</h2>
+          </div>
 
           <div className="router-list">
             {routers.map((router, index) => (
@@ -743,7 +839,7 @@ function App() {
                   )}
                 </div>
 
-                <div className="field-grid two-columns">
+                <div className="field-grid two-columns router-primary-fields">
                   <label className="field">
                     <span>Model</span>
                     <select
@@ -759,7 +855,7 @@ function App() {
                   </label>
 
                   <label className="field">
-                    <span>ID *</span>
+                    <span>Router ID *</span>
                     <div className="router-id-input">
                       <b>{router.model} -</b>
                       <input
@@ -780,97 +876,173 @@ function App() {
                     )}
                   </label>
 
-                  <label className="field">
-                    <span>Mode</span>
-                    <select
-                      value={router.mode}
-                      onChange={(event) => updateRouter(router.id, 'mode', event.target.value)}
-                      aria-label={`Router ${index + 1} mode`}
-                      aria-describedby={
-                        router.model === 'SOHO'
-                          ? `mode-note-${router.id}`
-                          : undefined
-                      }
-                      disabled={router.model === 'SOHO'}
-                    >
-                      <option>Round Robin</option>
-                      <option>Spillover</option>
-                      <option>NA</option>
-                    </select>
-                    {router.model === 'SOHO' && (
-                      <small className="field-note" id={`mode-note-${router.id}`}>
-                        SOHO mode is fixed to NA.
-                      </small>
-                    )}
-                  </label>
-
-                  <label className="field">
-                    <span>Provider</span>
-                    <select
-                      value={router.provider}
-                      onChange={(event) => updateRouter(router.id, 'provider', event.target.value)}
-                      aria-label={`Router ${index + 1} network provider`}
-                    >
-                      <option>StarHub / Singtel</option>
-                      <option>Singtel / StarHub</option>
-                      <option>Singtel only</option>
-                      <option>StarHub only</option>
-                      <option>StarHub (WAN)</option>
-                      <option>Singtel (WAN)</option>
-                    </select>
-                  </label>
-
-                  <label className="field router-location-field">
-                    <span>Location</span>
-                    <input
-                      value={router.location}
-                      onChange={(event) =>
-                        updateRouter(router.id, 'location', event.target.value)
-                      }
-                      placeholder="e.g. FOH, beside the stage"
-                      aria-label={`Router ${index + 1} location`}
-                    />
-                  </label>
                 </div>
 
-                <div className="ap-row">
-                  <label className="checkbox">
-                    <input
-                      type="checkbox"
-                      checked={router.includeAccessPoint}
-                      onChange={(event) => updateRouter(router.id, 'includeAccessPoint', event.target.checked)}
-                    />
-                    Include AP
-                  </label>
+                <details className="router-settings">
+                  <summary
+                    aria-label={`Router ${index + 1} details: ${getRouterSettingsSummary(router)}`}
+                  >
+                    <span>Router {index + 1} details</span>
+                    <small>{getRouterSettingsSummary(router)}</small>
+                  </summary>
 
-                  {router.includeAccessPoint && (
-                    <label className="field ap-id">
-                      <span>AP Cloud ID *</span>
-                      <input
-                        value={router.accessPointId}
-                        onChange={(event) => updateRouter(router.id, 'accessPointId', event.target.value)}
-                        placeholder="Last 4 characters"
-                        maxLength="4"
-                        inputMode="text"
-                        pattern="[A-Za-z0-9]{4}"
-                        autoCapitalize="characters"
-                        spellCheck="false"
-                        aria-label={`Router ${index + 1} AP Cloud ID`}
-                        aria-invalid={Boolean(routerErrors[router.id]?.accessPointId)}
-                        aria-describedby={routerErrors[router.id]?.accessPointId ? `ap-error-${router.id}` : undefined}
-                      />
-                      {routerErrors[router.id]?.accessPointId && (
-                        <small id={`ap-error-${router.id}`}>
-                          {routerErrors[router.id].accessPointId}
-                        </small>
+                  <div className="router-settings-content">
+                    <div className="field-grid two-columns">
+                      <label className="field">
+                        <span>Mode</span>
+                        <select
+                          value={router.mode}
+                          onChange={(event) =>
+                            updateRouter(router.id, 'mode', event.target.value)
+                          }
+                          aria-label={`Router ${index + 1} mode`}
+                          aria-describedby={
+                            router.model === 'SOHO'
+                              ? `mode-note-${router.id}`
+                              : undefined
+                          }
+                          disabled={router.model === 'SOHO'}
+                        >
+                          <option>Round Robin</option>
+                          <option>Spillover</option>
+                          <option>NA</option>
+                        </select>
+                        {router.model === 'SOHO' && (
+                          <small
+                            className="field-note"
+                            id={`mode-note-${router.id}`}
+                          >
+                            SOHO mode is fixed to NA.
+                          </small>
+                        )}
+                      </label>
+
+                      <label className="field">
+                        <span>Provider</span>
+                        <select
+                          value={router.provider}
+                          onChange={(event) =>
+                            updateRouter(
+                              router.id,
+                              'provider',
+                              event.target.value,
+                            )
+                          }
+                          aria-label={`Router ${index + 1} network provider`}
+                        >
+                          <option>StarHub / Singtel</option>
+                          <option>Singtel / StarHub</option>
+                          <option>Singtel only</option>
+                          <option>StarHub only</option>
+                          <option>StarHub (WAN)</option>
+                          <option>Singtel (WAN)</option>
+                        </select>
+                      </label>
+
+                      <label className="field router-location-field">
+                        <span>Location</span>
+                        <input
+                          value={router.location}
+                          onChange={(event) =>
+                            updateRouter(
+                              router.id,
+                              'location',
+                              event.target.value,
+                            )
+                          }
+                          placeholder="e.g. FOH, beside the stage"
+                          aria-label={`Router ${index + 1} location`}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="ap-row">
+                      <label className="checkbox">
+                        <input
+                          type="checkbox"
+                          checked={router.includeAccessPoint}
+                          onChange={(event) =>
+                            updateRouter(
+                              router.id,
+                              'includeAccessPoint',
+                              event.target.checked,
+                            )
+                          }
+                        />
+                        Include access point
+                      </label>
+
+                      {router.includeAccessPoint && (
+                        <label className="field ap-id">
+                          <span>AP Cloud ID *</span>
+                          <input
+                            value={router.accessPointId}
+                            onChange={(event) =>
+                              updateRouter(
+                                router.id,
+                                'accessPointId',
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Last 4 characters"
+                            maxLength="4"
+                            inputMode="text"
+                            pattern="[A-Za-z0-9]{4}"
+                            autoCapitalize="characters"
+                            spellCheck="false"
+                            aria-label={`Router ${index + 1} AP Cloud ID`}
+                            aria-invalid={Boolean(
+                              routerErrors[router.id]?.accessPointId,
+                            )}
+                            aria-describedby={
+                              routerErrors[router.id]?.accessPointId
+                                ? `ap-error-${router.id}`
+                                : undefined
+                            }
+                          />
+                          {routerErrors[router.id]?.accessPointId && (
+                            <small id={`ap-error-${router.id}`}>
+                              {routerErrors[router.id].accessPointId}
+                            </small>
+                          )}
+                        </label>
                       )}
-                    </label>
-                  )}
-                </div>
+                    </div>
+                  </div>
+                </details>
 
-                <div className="speed-test-field">
+                <div
+                  className="speed-test-field"
+                  role="group"
+                  tabIndex={0}
+                  aria-labelledby={`speed-test-heading-${router.id}`}
+                  aria-describedby={[
+                    `speed-test-paste-help-${router.id}`,
+                    routerErrors[router.id]?.speedTestImage
+                      ? `speed-test-error-${router.id}`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  aria-invalid={Boolean(
+                    routerErrors[router.id]?.speedTestImage,
+                  )}
+                  onPointerDown={(event) => {
+                    if (
+                      !event.target.closest?.('button, label, input')
+                    ) {
+                      event.currentTarget.focus()
+                    }
+                  }}
+                  onPaste={(event) => handleRouterImagePaste(router.id, event)}
+                >
                   <div className="speed-test-heading">
-                    <span>Speed-test image</span>
+                    <span id={`speed-test-heading-${router.id}`}>
+                      Speed-test image
+                    </span>
+                    <small id={`speed-test-paste-help-${router.id}`}>
+                      Paste with Ctrl/Cmd + V
+                    </small>
                   </div>
 
                   {router.speedTestImage ? (
@@ -892,10 +1064,10 @@ function App() {
                             }
                             aria-label={`Crop or resize speed-test image for router ${index + 1}`}
                           >
-                            Crop / resize
+                            Crop
                           </button>
                           <label className="image-action">
-                            Replace image
+                            Replace
                             <input
                               type="file"
                               accept="image/*"
@@ -919,7 +1091,7 @@ function App() {
                             onClick={() => removeRouterImage(router.id)}
                             aria-label={`Remove speed-test image from router ${index + 1}`}
                           >
-                            Remove image
+                            Remove
                           </button>
                         </div>
                       </div>
@@ -944,7 +1116,7 @@ function App() {
                       />
                       <span>Choose image</span>
                       <small id={`speed-test-help-${router.id}`}>
-                        PNG, JPG, WebP, or another image format
+                        PNG, JPG or WebP
                       </small>
                     </label>
                   )}
@@ -964,128 +1136,155 @@ function App() {
           </div>
 
           <button className="text-button add-button" type="button" onClick={addRouter}>
-            + Add router
+            Add another router
           </button>
         </section>
 
-        <section
-          className="form-section"
-          hidden={form.statusUpdate === 'Collection done'}
-        >
-          <h2>Wi-Fi</h2>
+        <details className="form-section optional-details">
+          <summary>
+            <span className="optional-details-title">
+              <span className="section-step" aria-hidden="true">
+                {form.statusUpdate === 'Collection done' ? '2' : '3'}
+              </span>
+              <strong>More event details</strong>
+            </span>
+            <small>{getEventDetailsSummary(form, networks)}</small>
+          </summary>
 
-          <div className="network-list">
-            {networks.map((network, index) => (
-              <div
-                className={`network-row ${networks.length === 1 ? 'single-network' : ''}`}
-                key={network.id}
-              >
-                {networks.length > 1 && (
-                  <span className="network-number">{index + 1}</span>
-                )}
-
-                <label className="field">
-                  <span>SSID</span>
-                  <input
-                    value={network.ssid}
-                    onChange={(event) => updateNetwork(network.id, 'ssid', event.target.value)}
-                    placeholder="Network name"
-                    aria-label={`Wi-Fi network ${index + 1} SSID`}
-                    aria-invalid={Boolean(networkErrors[network.id]?.ssid)}
-                    aria-describedby={networkErrors[network.id]?.ssid ? `ssid-error-${network.id}` : undefined}
-                  />
-                  {networkErrors[network.id]?.ssid && (
-                    <small id={`ssid-error-${network.id}`}>{networkErrors[network.id].ssid}</small>
-                  )}
-                </label>
-
-                <label className="field">
-                  <span>Password</span>
-                  <input
-                    value={network.password}
-                    onChange={(event) => updateNetwork(network.id, 'password', event.target.value)}
-                    placeholder="Network password"
-                    aria-label={`Wi-Fi network ${index + 1} password`}
-                    aria-invalid={Boolean(networkErrors[network.id]?.password)}
-                    aria-describedby={networkErrors[network.id]?.password ? `password-error-${network.id}` : undefined}
-                  />
-                  {networkErrors[network.id]?.password && (
-                    <small id={`password-error-${network.id}`}>{networkErrors[network.id].password}</small>
-                  )}
-                </label>
-
-                {networks.length > 1 && (
-                  <button
-                    className="remove-button"
-                    type="button"
-                    onClick={() => removeNetwork(network.id)}
-                    aria-label={`Remove Wi-Fi network ${index + 1}`}
-                  >
-                    Remove
-                  </button>
-                )}
+          <div className="optional-details-content">
+            <div
+              className="optional-group"
+              hidden={form.statusUpdate === 'Collection done'}
+            >
+              <div className="subsection-heading">
+                <div>
+                  <h2>Wi-Fi</h2>
+                  <p>Add only when the event network needs to be shared.</p>
+                </div>
               </div>
-            ))}
+
+              <div className="network-list">
+                {networks.map((network, index) => (
+                  <div
+                    className={`network-row ${networks.length === 1 ? 'single-network' : ''}`}
+                    key={network.id}
+                  >
+                    {networks.length > 1 && (
+                      <span className="network-number">{index + 1}</span>
+                    )}
+
+                    <label className="field">
+                      <span>SSID</span>
+                      <input
+                        value={network.ssid}
+                        onChange={(event) => updateNetwork(network.id, 'ssid', event.target.value)}
+                        placeholder="Network name"
+                        aria-label={`Wi-Fi network ${index + 1} SSID`}
+                        aria-invalid={Boolean(networkErrors[network.id]?.ssid)}
+                        aria-describedby={networkErrors[network.id]?.ssid ? `ssid-error-${network.id}` : undefined}
+                      />
+                      {networkErrors[network.id]?.ssid && (
+                        <small id={`ssid-error-${network.id}`}>{networkErrors[network.id].ssid}</small>
+                      )}
+                    </label>
+
+                    <label className="field">
+                      <span>Password</span>
+                      <input
+                        value={network.password}
+                        onChange={(event) => updateNetwork(network.id, 'password', event.target.value)}
+                        placeholder="Network password"
+                        aria-label={`Wi-Fi network ${index + 1} password`}
+                        aria-invalid={Boolean(networkErrors[network.id]?.password)}
+                        aria-describedby={networkErrors[network.id]?.password ? `password-error-${network.id}` : undefined}
+                      />
+                      {networkErrors[network.id]?.password && (
+                        <small id={`password-error-${network.id}`}>{networkErrors[network.id].password}</small>
+                      )}
+                    </label>
+
+                    {networks.length > 1 && (
+                      <button
+                        className="remove-button"
+                        type="button"
+                        onClick={() => removeNetwork(network.id)}
+                        aria-label={`Remove Wi-Fi network ${index + 1}`}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button className="text-button add-button" type="button" onClick={addNetwork}>
+                Add another Wi-Fi network
+              </button>
+            </div>
+
+            <div
+              className="optional-group"
+              hidden={form.statusUpdate === 'Collection done'}
+            >
+              <div className="subsection-heading">
+                <div>
+                  <h2>Collection</h2>
+                  <p>Add the planned collection date or time.</p>
+                </div>
+              </div>
+              <div className="field-grid two-columns collection-fields">
+                <label className="field">
+                  <span>Date</span>
+                  <input
+                    type="date"
+                    name="collectionDate"
+                    value={form.collectionDate}
+                    onChange={updateField}
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Time</span>
+                  <input
+                    type="time"
+                    name="collectionTime"
+                    value={form.collectionTime}
+                    onChange={updateField}
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="optional-group">
+              <div className="subsection-heading">
+                <div>
+                  <h2>Notes</h2>
+                  <p>Add anything the group should know.</p>
+                </div>
+                <button className="quick-reply" type="button" onClick={addNoIssuesNote}>
+                  No issues
+                </button>
+              </div>
+              <label className="field">
+                <span className="sr-only">Notes</span>
+                <textarea
+                  name="notes"
+                  value={form.notes}
+                  onChange={updateField}
+                  placeholder="Add a note"
+                  rows="3"
+                />
+              </label>
+            </div>
           </div>
-
-          <button className="text-button add-button" type="button" onClick={addNetwork}>
-            + Add Wi-Fi
-          </button>
-        </section>
-
-        <section
-          className="form-section"
-          hidden={form.statusUpdate === 'Collection done'}
-        >
-          <h2>Collection</h2>
-          <div className="field-grid two-columns collection-fields">
-            <label className="field">
-              <span>Date</span>
-              <input
-                type="date"
-                name="collectionDate"
-                value={form.collectionDate}
-                onChange={updateField}
-              />
-            </label>
-
-            <label className="field">
-              <span>Time</span>
-              <input
-                type="time"
-                name="collectionTime"
-                value={form.collectionTime}
-                onChange={updateField}
-              />
-            </label>
-          </div>
-        </section>
-
-        <section className="form-section">
-          <div className="section-title-row notes-title-row">
-            <h2>Notes</h2>
-            <button className="quick-reply" type="button" onClick={addNoIssuesNote}>
-              No issues
-            </button>
-          </div>
-          <label className="field">
-            <span className="sr-only">Notes</span>
-            <textarea
-              name="notes"
-              value={form.notes}
-              onChange={updateField}
-              placeholder="Add a note"
-              rows="4"
-            />
-          </label>
-        </section>
+        </details>
 
         <div className="form-actions">
           <button className="clear-button" type="button" onClick={resetForm}>
             Reset
           </button>
           <button className="primary-button" type="submit">
-            Generate
+            Generate update
           </button>
         </div>
       </form>
@@ -1254,6 +1453,13 @@ function App() {
         </div>
       )}
 
+      <footer className="page-footer">
+        For support, contact{' '}
+        <a href="mailto:xavier.wong@pomegranets.com">
+          xavier.wong@pomegranets.com
+        </a>
+      </footer>
+
       {cropEditorRouter?.speedTestImage && (
         <ImageCropDialog
           image={cropEditorRouter.speedTestImage}
@@ -1262,6 +1468,15 @@ function App() {
           onSave={(crop) => saveRouterImageCrop(cropEditorRouter.id, crop)}
         />
       )}
+
+      <span
+        className="sr-only"
+        key={`paste-${imagePasteAnnouncement.sequence}`}
+        role="status"
+        aria-live="polite"
+      >
+        {imagePasteAnnouncement.message}
+      </span>
     </main>
   )
 }

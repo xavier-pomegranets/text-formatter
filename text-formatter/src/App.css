@@ -5,7 +5,7 @@
 }
 
 .page-header {
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .page-header h1 {
@@ -13,6 +13,31 @@
   color: #222;
   font-size: 24px;
   line-height: 1.2;
+}
+
+.page-header p {
+  margin: 6px 0 0;
+  color: #70766c;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.page-footer {
+  margin-top: 24px;
+  color: #70766c;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.page-footer a {
+  color: #4d5725;
+  font-weight: 600;
+  text-underline-offset: 2px;
+}
+
+.page-footer a:hover {
+  color: #303817;
 }
 
 .form,
@@ -34,6 +59,30 @@
   color: #2b2b2b;
   font-size: 14px;
   font-weight: 700;
+}
+
+.section-heading {
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.section-heading h2 {
+  margin: 0;
+}
+
+.section-step {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: #414b22;
+  background: #edf3cf;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .field-grid {
@@ -305,18 +354,88 @@ button {
   background: #f0f2e8;
 }
 
-.notes-title-row {
-  margin-bottom: 12px;
-}
-
 .quick-reply {
   color: #4d5725;
   background: #f3f5ec;
   border: 1px solid #e0e4d4;
 }
 
+.optional-details {
+  padding: 0;
+}
+
+.optional-details > summary {
+  min-height: 68px;
+  padding: 14px 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.optional-details-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.optional-details-title > strong {
+  color: #2b2b2b;
+  font-size: 14px;
+}
+
+.optional-details > summary > small {
+  min-width: 0;
+  overflow: hidden;
+  color: #70766c;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optional-details-content {
+  padding: 0 20px 20px;
+  border-top: 1px solid #eceee8;
+}
+
+.optional-group {
+  padding-top: 18px;
+}
+
+.optional-group:not([hidden]) ~ .optional-group:not([hidden]) {
+  margin-top: 18px;
+  border-top: 1px solid #eceee8;
+}
+
+.subsection-heading {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.subsection-heading h2,
+.subsection-heading p {
+  margin: 0;
+}
+
+.subsection-heading h2 {
+  color: #343732;
+  font-size: 13px;
+}
+
+.subsection-heading p {
+  margin-top: 3px;
+  color: #777c72;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .router-list {
-  margin-top: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -339,7 +458,7 @@ button {
 
 .router-block-header strong {
   color: #4b4d47;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .inline-remove {
@@ -351,9 +470,93 @@ button {
   text-decoration: underline;
 }
 
-.router-block .ap-row {
-  margin-top: 16px;
-  padding-top: 14px;
+.router-settings {
+  margin-top: 12px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #e0e3da;
+  border-radius: 7px;
+}
+
+.router-settings > summary,
+.optional-details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.router-settings > summary::-webkit-details-marker,
+.optional-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.router-settings > summary::marker,
+.optional-details > summary::marker {
+  content: '';
+}
+
+.router-settings > summary {
+  min-height: 46px;
+  padding: 9px 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.router-settings > summary::after,
+.optional-details > summary::after {
+  content: '+';
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: #647027;
+  background: #f0f3e4;
+  border-radius: 50%;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.router-settings[open] > summary::after,
+.optional-details[open] > summary::after {
+  content: '\2212';
+}
+
+.router-settings > summary:hover,
+.optional-details > summary:hover {
+  background: #f7f8f3;
+}
+
+.router-settings > summary:focus-visible,
+.optional-details > summary:focus-visible {
+  outline: 3px solid rgba(151, 174, 42, 0.35);
+  outline-offset: -3px;
+}
+
+.router-settings > summary > span {
+  color: #485222;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.router-settings > summary > small {
+  min-width: 0;
+  overflow: hidden;
+  color: #767b72;
+  font-size: 11px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.router-settings-content {
+  padding: 14px 12px 12px;
+  border-top: 1px solid #e6e8e1;
+}
+
+.router-settings-content .ap-row {
+  margin-top: 14px;
+  padding-top: 12px;
 }
 
 .router-location-field {
@@ -361,9 +564,15 @@ button {
 }
 
 .speed-test-field {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid #ecece9;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e8eae4;
+  border-radius: 4px;
+}
+
+.speed-test-field:focus-visible {
+  outline: 3px solid rgba(151, 174, 42, 0.35);
+  outline-offset: 5px;
 }
 
 .speed-test-heading {
@@ -380,15 +589,21 @@ button {
   font-weight: 600;
 }
 
+.speed-test-heading > small {
+  color: #70766c;
+  font-size: 11px;
+  font-weight: 400;
+}
+
 .image-upload {
-  min-height: 86px;
+  min-height: 62px;
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 14px;
+  gap: 3px;
+  padding: 10px 14px;
   color: #596326;
   background: #fff;
   border: 1px dashed #bfc6aa;
@@ -512,7 +727,6 @@ button {
 }
 
 .network-list {
-  margin-top: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1109,8 +1323,48 @@ button {
     padding: 16px;
   }
 
+  .optional-details {
+    padding: 0;
+  }
+
+  .optional-details > summary {
+    min-height: 70px;
+    padding: 13px 16px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 10px;
+  }
+
+  .optional-details > summary > small {
+    grid-column: 1;
+    text-align: left;
+  }
+
+  .optional-details > summary::after {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+
+  .optional-details-content {
+    padding: 0 16px 16px;
+  }
+
   .router-block {
     padding: 14px;
+  }
+
+  .router-settings > summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 3px 10px;
+  }
+
+  .router-settings > summary > small {
+    grid-column: 1;
+    text-align: left;
+  }
+
+  .router-settings > summary::after {
+    grid-column: 2;
+    grid-row: 1 / 3;
   }
 
   .ap-row {
@@ -1126,6 +1380,10 @@ button {
     align-items: flex-start;
     flex-direction: column;
     gap: 2px;
+  }
+
+  .subsection-heading {
+    align-items: stretch;
   }
 
   .selected-image {
