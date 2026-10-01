@@ -5,6 +5,7 @@ const initialForm = {
   eventName: '',
   statusUpdate: 'Setup done',
   collectionDate: '',
+  collectionTime: '',
   notes: '',
 }
 
@@ -32,6 +33,18 @@ function formatCollectionDate(value) {
   }).format(date)
 }
 
+function formatCollectionTime(value) {
+  const [hour, minute] = value.split(':').map(Number)
+  const time = new Date(Date.UTC(1970, 0, 1, hour, minute))
+
+  return new Intl.DateTimeFormat('en-SG', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  }).format(time)
+}
+
 function buildMessage(form, routers, networks) {
   const isCollectionDone = form.statusUpdate === 'Collection done'
   const updateType = isCollectionDone ? 'Collection' : 'Setup'
@@ -50,8 +63,13 @@ function buildMessage(form, routers, networks) {
     })
   }
 
-  if (!isCollectionDone && form.collectionDate) {
-    lines.push('', `Collection: ${formatCollectionDate(form.collectionDate)}`)
+  if (!isCollectionDone && (form.collectionDate || form.collectionTime)) {
+    const collectionDateTime = [
+      form.collectionDate && formatCollectionDate(form.collectionDate),
+      form.collectionTime && formatCollectionTime(form.collectionTime),
+    ].filter(Boolean)
+
+    lines.push('', `Collection: ${collectionDateTime.join(', ')}`)
   }
 
   if (!isCollectionDone) {
@@ -337,12 +355,7 @@ function App() {
           className="form-section"
           hidden={form.statusUpdate === 'Collection done'}
         >
-          <div className="section-title-row">
-            <h2>Routers</h2>
-            <button className="text-button" type="button" onClick={addRouter}>
-              + Router
-            </button>
-          </div>
+          <h2>Routers</h2>
 
           <div className="router-list">
             {routers.map((router, index) => (
@@ -383,6 +396,8 @@ function App() {
                         value={router.routerId}
                         onChange={(event) => updateRouter(router.id, 'routerId', event.target.value)}
                         placeholder="5"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         aria-label={`Router ${index + 1} ID`}
                         aria-invalid={Boolean(routerErrors[router.id]?.routerId)}
                         aria-describedby={routerErrors[router.id]?.routerId ? `router-error-${router.id}` : undefined}
@@ -457,18 +472,17 @@ function App() {
               </div>
             ))}
           </div>
+
+          <button className="text-button add-button" type="button" onClick={addRouter}>
+            + Add router
+          </button>
         </section>
 
         <section
           className="form-section"
           hidden={form.statusUpdate === 'Collection done'}
         >
-          <div className="section-title-row">
-            <h2>Wi-Fi</h2>
-            <button className="text-button" type="button" onClick={addNetwork}>
-              + Wi-Fi
-            </button>
-          </div>
+          <h2>Wi-Fi</h2>
 
           <div className="network-list">
             {networks.map((network, index) => (
@@ -523,22 +537,38 @@ function App() {
               </div>
             ))}
           </div>
+
+          <button className="text-button add-button" type="button" onClick={addNetwork}>
+            + Add Wi-Fi
+          </button>
         </section>
 
         <section
           className="form-section"
           hidden={form.statusUpdate === 'Collection done'}
         >
-          <h2>Collection date</h2>
-          <label className="field">
-            <span className="sr-only">Collection date</span>
-            <input
-              type="date"
-              name="collectionDate"
-              value={form.collectionDate}
-              onChange={updateField}
-            />
-          </label>
+          <h2>Collection</h2>
+          <div className="field-grid two-columns collection-fields">
+            <label className="field">
+              <span>Date</span>
+              <input
+                type="date"
+                name="collectionDate"
+                value={form.collectionDate}
+                onChange={updateField}
+              />
+            </label>
+
+            <label className="field">
+              <span>Time</span>
+              <input
+                type="time"
+                name="collectionTime"
+                value={form.collectionTime}
+                onChange={updateField}
+              />
+            </label>
+          </div>
         </section>
 
         <section className="form-section">
