@@ -327,7 +327,6 @@ button {
 .text-button,
 .remove-button,
 .inline-remove,
-.quick-reply,
 .clear-button {
   color: #5a6528;
   background: transparent;
@@ -335,7 +334,6 @@ button {
 }
 
 .text-button,
-.quick-reply,
 .clear-button {
   padding: 6px 8px;
 }
@@ -349,15 +347,76 @@ button {
 }
 
 .text-button:hover,
-.quick-reply:hover,
 .clear-button:hover {
   background: #f0f2e8;
 }
 
-.quick-reply {
+.quick-actions {
+  margin-top: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.quick-actions-heading {
+  flex: 0 0 auto;
+  padding-top: 5px;
+}
+
+.quick-actions-heading h3 {
+  margin: 0;
+  color: #444;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.quick-actions-heading p {
+  margin: 3px 0 0;
+  color: #777c72;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.quick-action-buttons {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quick-action {
+  min-height: 36px;
+  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: #4d5725;
   background: #f3f5ec;
   border: 1px solid #e0e4d4;
+  font-size: 12px;
+  text-align: left;
+}
+
+.quick-action:hover:not(:disabled) {
+  background: #eaf0da;
+  border-color: #bfcaa0;
+}
+
+.quick-action:focus-visible {
+  outline: 3px solid rgba(151, 174, 42, 0.35);
+  outline-offset: 2px;
+}
+
+.quick-action:disabled {
+  color: #6c7165;
+  background: #f6f7f3;
+  border-color: #e3e6dc;
+  cursor: default;
+}
+
+.quick-action-added {
+  font-size: 10px;
+  font-weight: 500;
 }
 
 .optional-details {
@@ -1384,6 +1443,15 @@ button {
 
   .subsection-heading {
     align-items: stretch;
+  }
+
+  .quick-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .quick-actions-heading {
+    padding-top: 0;
   }
 
   .selected-image {

@@ -24,8 +24,10 @@ function formatCollectionTime(value) {
 
 export function buildRouterCaption(router) {
   const routerLine = `${router.model} - ${router.routerId.trim()}${router.includeAccessPoint ? ' + AP' : ''}`
-  const mode = router.mode === 'Round Robin' ? 'RR' : router.mode
-  const lines = [routerLine, `${router.provider} ${mode}`]
+  const mode = router.model === 'SOHO'
+    ? ''
+    : router.mode === 'Round Robin' ? 'RR' : router.mode
+  const lines = [routerLine, [router.provider, mode].filter(Boolean).join(' ')]
 
   if (router.includeAccessPoint) {
     lines.push(`AP Cloud ID: ${router.accessPointId.trim()}`)
